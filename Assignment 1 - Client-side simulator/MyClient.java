@@ -1,91 +1,114 @@
 import java.io.*;
 import java.net.*;
+import java.util.ArrayList;
 public class MyClient {
+
+    static Socket s;
+    static DataOutputStream dout;
+    static BufferedReader dis;
+
+    static void clientSend(String message) throws IOException {
+        dout.write((message + "\n").getBytes());
+        dout.flush();
+        System.out.println("Client Sent: " + message);
+      }
+    
+      static String clientRead() throws IOException {
+        String message = (String) dis.readLine();
+        System.out.println("Server Message: " + message);
+        return message;
+      }
+
+
   public static void main(String[] args) {
     try {
-      Socket s = new Socket("localhost", 50000);
-      DataOutputStream dout = new DataOutputStream(s.getOutputStream());
-      BufferedReader dis = new BufferedReader(new InputStreamReader(s.getInputStream()));
 
-      dout.write(("HELO\n").getBytes());
-      dout.flush();
-      String str = (String) dis.readLine();
-      System.out.println("Client Received= " + str);
+      s = new Socket("localhost", 50000);
+      dout = new DataOutputStream(s.getOutputStream());
+      dis = new BufferedReader(new InputStreamReader(s.getInputStream()));
+        
+      // SEND HELO
+      clientSend("HELO");
+      String str = clientRead();
 
+      // SEND AUTH
       String username = System.getProperty("user.name");
-      dout.write(("AUTH" + username + "\n").getBytes());
-      dout.flush();
-      str = (String) dis.readLine();
-      System.out.println("Client Received= " + str);
+      clientSend("AUTH " + username);
+      str = clientRead();
+        
+      // SEND REDY
+      clientSend("REDY");
+      String jobRequest = clientRead();
 
-      // Ready
-      dout.write(("REDY\n").getBytes());
-      dout.flush();
-      String jobRequest = (String) dis.readLine();
-      System.out.println("Client Received (REDY)= " + jobRequest);
-      // Required for job scheduling later!
-      String[] jobReqSplit = jobRequest.split(" ");
-      int jobId = Integer.parseInt(jobReqSplit[2]); // keep track of jobID
+      // SEND GETS All
+      clientSend("GETS All");
+      String getsResponse = clientRead();
 
-      // GETS ALL
-      dout.write(("GETS All\n").getBytes());
-      dout.flush();
-      String getsResponse = (String) dis.readLine();
-      System.out.println("Client Received (getsResponse)= " + getsResponse);
-
-      // C Sends OK
-      dout.write(("OK\n").getBytes());
-      dout.flush();
+      // SEND OK
+      clientSend("OK");
 
       // Server sends: DATA 7 124 (number of records)
-      String[] indivData = getsResponse.split(" ");
-      int nRecs = Integer.parseInt(indivData[1]); // we are keeping track of n which is 7
-      System.out.println("nRecs " + nRecs);
-
-      String serverInfo = ""; // for testing atm
-      String largestServerType = ""; // initialise empty string to track the type of server i.e., medium
-      String largestServerID = ""; // initialise empty string to track the type of serverid
-      int largestCPU = 0; // Placeholder to track the amount of CPU cores
+      String[] serverData = getsResponse.split(" ");
+      int nRecs = Integer.parseInt(serverData[1]);
+    
+      String largestServerType = "";    // initialise empty string to track the type of server i.e., medium
+      ArrayList<String> largestServerList = new ArrayList<>(); // ArrayList to store the servers to.
+      int largestCPU = 0; // // Placeholder to track the amount of CPU cores
 
       for (int i = 0; i < nRecs; i++) {
-        serverInfo = (String) dis.readLine();
-        // Request information of all servers (7)
-        System.out.println("What is servers doing: " + serverInfo);
-        // split serverInfo into an array. Index 4 is the CPU core info of the server.
+        String serverInfo = (String) dis.readLine();
+        // split serverInfo into an array. Index 4 is the CPU core info of the server.   
         String[] serverSplit = serverInfo.split(" ");
-        int serverCPU = Integer.parseInt(serverSplit[4]); // Convert String to Int
-        System.out.println("Amount of cores? " + serverSplit[4]);
+        int serverCPU = Integer.parseInt(serverSplit[4]);
 
-        // Comparing CPU size of each server and storing the largest value in largestCPU
+        // Comparing CPU size of each server and storing the largest value 
+        // Also checking, to see if largest servertype of a different name exists
         if (serverCPU > largestCPU) {
-          largestServerType = serverSplit[0];
-          largestServerID = serverSplit[1];
-          largestCPU = Integer.parseInt(serverSplit[4]);
+            largestServerType = serverSplit[0];
+            largestCPU = serverCPU;
+            largestServerList.clear();
+            largestServerList.add(serverSplit[1]);
+          } else if (serverCPU == largestCPU && serverSplit[0].equals(largestServerType)) {
+            largestServerList.add(serverSplit[1]);
+          }
+        }
+      clientSend("OK");
+      clientRead();
+
+        int currentIndex = 0;
+
+        while (true) {
+            String[] jobReqSplit = jobRequest.split(" ");
+    
+            if (jobReqSplit[0].equals("JOBN") ) {
+              int jobId = Integer.parseInt(jobReqSplit[2]);
+              String serverInfo = largestServerList.get(currentIndex);
+            //   String[] serverSplit = serverInfo.split(" ");
+              String schdCommand = "SCHD " + jobId + " " + largestServerType + " " + serverInfo;
+    
+              System.out.println(schdCommand);
+              dout.write((schdCommand + "\n").getBytes());
+              dout.flush();
+              System.out.println((String) dis.readLine());
+            //   clientRead();
+    
+              currentIndex = (currentIndex + 1) % largestServerList.size();
+            } else if (jobReqSplit[0].equals("NONE")) {
+              break;
+            }
+
+            // SEND REDY
+            clientSend("REDY");
+            jobRequest = clientRead();
+        }
+        clientSend("QUIT");
+        str = clientRead();      
+    
+          dout.close();
+          s.close();
+        } catch (Exception e) {
+          System.out.println(e);
         }
       }
-      // We may now determine largestCPU is 8 and largestServerType is Medium
-      System.out.println("largestCPU? " + largestCPU);
-      System.out.println("largestServerType? " + largestServerType);
-      System.out.println("largestServerID " + largestServerID);
-      dout.write(("OK\n").getBytes());
-      dis.readLine();
-      dout.flush();
 
-      if (jobReqSplit[0].equals("JOBN")) {
-        String schdCommand = "SCHD " + jobId + " " + largestServerType + " " + largestServerID;
-        dout.write((schdCommand + "\n").getBytes());
-        dout.flush();
-      }
-
-      dout.write(("QUIT\n").getBytes());
-      dout.flush();
-      str = (String) dis.readLine();
-      System.out.println("Client Received= " + str);
-
-      dout.close();
-      s.close();
-    } catch (Exception e) {
-      System.out.println(e);
     }
-  }
-}
