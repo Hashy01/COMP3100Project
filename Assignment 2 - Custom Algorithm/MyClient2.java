@@ -51,12 +51,25 @@ public class MyClient2 {
             int jobMemory = Integer.valueOf(jobData[5]);
             int jobDisk = Integer.valueOf(jobData[6]);
 
-            clientSend("GETS Capable " + jobCore + " " + jobMemory + " " + jobDisk);
+            clientSend("GETS Avail " + jobCore + " " + jobMemory + " " + jobDisk);
+            String test = clientRead();
             // dout.write(("GETS Capable " + jobCore + " " + jobMemory + " " + jobDisk + "\n").getBytes());
             System.out.println("SENT GETS Capable " + jobCore + " " + jobMemory + " " + jobDisk);
 
-            String[] serverInfo = dis.readLine().split(" ");
+            String[] serverInfo = test.split(" ");
             int nrecs = Integer.valueOf(serverInfo[1]);
+
+            if (nrecs == 0){
+              clientSend("OK");
+              clientRead();
+              clientSend("GETS Capable " + jobCore + " " + jobMemory + " " + jobDisk);
+              test = clientRead();
+              serverInfo = test.split(" ");
+              nrecs = Integer.valueOf(serverInfo[1]);
+            }
+
+
+
             // SEND "OK"
             clientSend("OK");
             System.out.println("SENT OK");
